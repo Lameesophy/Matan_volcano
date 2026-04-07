@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matan · Volcano Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07070a;--surf:#0e0e12;--surf2:#15151a;--brd:#222228;
+  --acc:#e07a18;--acc2:#7a3d08;--text:#cebfa3;--dim:#5a5248;--bright:#f0e4cc;
+  --green:#52c97a;--teal:#38b8b8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--bg)}
+body{font-family:'IBM Plex Mono',monospace;color:var(--text);background:var(--bg);min-height:100vh}
+
+/* HEADER */
+.hdr{height:50px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;border-bottom:1px solid var(--brd);background:var(--bg);
+  position:sticky;top:0;z-index:100;flex-shrink:0}
+.hdr-title{font-family:'Cinzel',serif;font-size:1.4rem;font-weight:900;
+  letter-spacing:.3em;color:var(--bright);text-shadow:0 0 40px #e07a1850}
+.hdr-right{display:flex;align-items:center;gap:8px;font-size:.5rem;color:var(--dim)}
+.hdr-badge{padding:2px 8px;border:1px solid var(--acc2);font-size:.48rem;letter-spacing:.12em;color:var(--acc)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);flex-shrink:0;transition:.3s}
+.status-dot.running{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.2s infinite}
+.status-dot.done{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* DESKTOP LAYOUT */
+.layout{display:flex;flex-direction:column;height:calc(100vh - 50px);overflow:hidden;position:relative}
+.canvas-row{display:flex;flex:1;min-height:0;position:relative}
+.canvas-wrap{flex:1;position:relative;min-width:0}
+canvas#scene{position:absolute;inset:0;width:100%;height:100%}
+
+/* DESKTOP FLOATING PANELS — positioned inside canvas-row */
+.panel{position:absolute;top:50%;transform:translateY(-50%);
+  background:#0e0a06ee;border:1px solid #3a2a18;padding:12px;
+  width:192px;max-height:88%;overflow-y:auto;z-index:20;
+  display:flex;flex-direction:column;gap:5px;backdrop-filter:blur(4px)}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--acc),transparent)}
+.panel-left{left:12px}
+.panel-right{right:12px}
+
+/* TIMELINE — absolute overlay at bottom of canvas */
+.timeline{position:absolute;bottom:0;left:0;right:0;z-index:20;
+  padding:10px 16px 20px;background:linear-gradient(transparent,#07070add)}
+.tl-lbl{font-size:.44rem;letter-spacing:.2em;color:#7a6040;text-transform:uppercase;margin-bottom:6px}
+#tlTrack{position:relative;height:32px}
+.tl-bg{position:absolute;inset:0;background:#0e0a06cc;border:1px solid #3a2a10;border-radius:2px}
+#tlFill{position:absolute;top:0;left:0;bottom:0;background:linear-gradient(90deg,#c83000,#e07a18);border-radius:2px;width:0%}
+.tl-seg{position:absolute;top:0;bottom:0}
+.tl-seg-bar{position:absolute;top:3px;bottom:3px;border-radius:1px;opacity:.85}
+.tl-seg-lbl{position:absolute;bottom:-18px;font-size:.46rem;color:#c09060;white-space:nowrap;font-weight:600}
+.tl-seg-age{position:absolute;top:-16px;font-size:.42rem;color:#8a6840;white-space:nowrap}
+.tl-gap{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:.42rem;color:#6a4828}
+#tlCursor{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--acc);box-shadow:0 0 8px var(--acc);pointer-events:none}
+
+/* SHARED PANEL ELEMENTS */
+.p-lbl{font-size:.44rem;letter-spacing:.22em;color:var(--dim);text-transform:uppercase;
+  display:flex;align-items:center;gap:5px}
+.p-lbl::before{content:'';width:3px;height:3px;border-radius:50%;background:var(--acc2);flex-shrink:0}
+.p-sep{height:1px;background:var(--brd);margin:4px 0}
+.info-row{display:flex;justify-content:space-between;font-size:.52rem;padding:3px 0;border-bottom:1px solid #1e160a}
+.info-row:last-child{border-bottom:none}
+.ik{color:#6a5a40}.iv{color:#d4b880;font-weight:600}
+.phase-pill{display:inline-block;padding:2px 7px;font-size:.5rem;border:1px solid #3a2a18;color:#6a5040;margin:1px;transition:.4s}
+.phase-pill.active{border-color:var(--acc);color:var(--acc);background:#e07a1812}
+.rock-name{font-family:'Cinzel',serif;font-size:.9rem;color:var(--bright);margin:5px 0 3px;min-height:1.2em;transition:color .5s}
+.rock-track{height:4px;background:#1e160a;border-radius:2px;overflow:hidden;margin-bottom:3px}
+.rock-fill{height:100%;border-radius:2px;transition:width .5s;background:linear-gradient(90deg,#c83000,#e07a18,#d4c090,#f0e8d8)}
+.rock-stages{display:flex;justify-content:space-between;font-size:.38rem;color:#3a2818}
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.mode-btn{padding:7px 4px;background:var(--surf2);border:1px solid var(--brd);color:var(--dim);
+  font-family:'IBM Plex Mono',monospace;font-size:.5rem;cursor:pointer;transition:.2s;text-align:center}
+.mode-btn.active{border-color:var(--acc);color:var(--acc);background:#e07a1814}
+.seq-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.seq-pick{padding:8px 4px;background:var(--surf2);border:1px solid var(--brd);color:var(--dim);
+  font-family:'IBM Plex Mono',monospace;font-size:.52rem;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:2px;transition:.2s}
+.seq-pick span{font-size:.4rem;color:#3a2818}
+.seq-pick.active{border-color:var(--acc);color:var(--acc);background:#e07a1814}
+.ctrl-btn{width:100%;padding:8px;background:var(--surf2);border:1px solid var(--brd);color:var(--dim);
+  font-family:'IBM Plex Mono',monospace;font-size:.54rem;cursor:pointer;transition:.2s;text-align:center}
+.ctrl-btn.primary{border-color:var(--acc);color:var(--acc);background:#e07a1812}
+.ctrl-row{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.spd-row{display:flex;gap:3px}
+.spd-btn{flex:1;padding:4px 2px;background:var(--surf2);border:1px solid var(--brd);color:var(--dim);
+  font-family:'IBM Plex Mono',monospace;font-size:.5rem;cursor:pointer;transition:.15s;text-align:center}
+.spd-btn.active{border-color:var(--acc);color:var(--acc)}
+.acc-hdr{display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:.52rem;
+  color:#5a4a30;cursor:pointer;border-bottom:1px solid #1e160a;transition:color .2s;user-select:none}
+.acc-hdr:hover,.acc-hdr.active{color:var(--acc)}
+.acc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.acc-arrow{margin-left:auto;font-size:.58rem}
+.acc-body{padding:5px 2px 2px;border-bottom:1px solid #1e160a}
+.sl-block{margin-bottom:6px}
+.sl-hdr{display:flex;justify-content:space-between;font-size:.5rem;margin-bottom:3px}
+.sl-name{color:var(--dim)}.sl-val{color:var(--acc);font-weight:600}
+input[type=range]{width:100%;-webkit-appearance:none;height:2px;background:var(--brd);border-radius:1px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--acc);cursor:pointer;box-shadow:0 0 6px #e07a1880}
+
+#eruptFlash{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 30%,#ff6b0040,transparent 70%);transition:opacity .15s;z-index:200}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--brd);border-radius:1px}
+
+/* MOBILE ≤ 700px */
+@media(max-width:700px){
+  body{overflow-y:auto}
+  .layout{flex-direction:column;height:auto;overflow:visible}
+  .canvas-row{flex:none;position:relative;height:70vw;min-height:280px}
+  .canvas-wrap{position:absolute;inset:0}
+  .panel-left,.panel-right{display:none!important}
+  .mob-section{display:block!important}
+  input[type=range]::-webkit-slider-thumb{width:18px;height:18px}
+  .ctrl-btn,.mode-btn,.seq-pick,.spd-btn{min-height:38px}
+}
+
+/* Mobile sections — hidden on desktop, shown on mobile */
+.mob-section{display:none;background:var(--surf);border-bottom:1px solid var(--brd);padding:14px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-title">MATAN</div>
+  <div class="hdr-right">
+    <span style="font-size:.46rem;color:var(--dim);letter-spacing:.08em">AI-assisted by <span style="color:var(--acc)">Lamees Felemban</span> · Built with <span style="color:var(--acc)">Manus</span> & <span style="color:var(--acc)">Claude</span></span>
+    <span class="hdr-badge">v5 · Harrat Rahat</span>
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusTxt">Ready</span>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="canvas-row">
+    <div class="canvas-wrap">
+    <canvas id="scene"></canvas>
+    <div class="timeline" id="tlWrap">
+      <div class="tl-lbl">Eruption Timeline — All 4 Sequences</div>
+      <div id="tlTrack">
+        <div class="tl-bg"></div>
+        <div id="tlFill"></div>
+        <div id="tlCursor" style="left:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DESKTOP LEFT PANEL -->
+  <div class="panel panel-left">
+    <div class="p-lbl">Current State</div>
+    <div class="info-row"><span class="ik">Sequence</span><span class="iv" id="ipSeq">—</span></div>
+    <div class="info-row"><span class="ik">Time</span><span class="iv" id="ipTime">—</span></div>
+    <div class="info-row"><span class="ik">Temperature</span><span class="iv" id="ipTemp">—</span></div>
+    <div class="info-row"><span class="ik">SiO₂</span><span class="iv" id="ipSio">—</span></div>
+    <div class="info-row"><span class="ik">Crystal φ</span><span class="iv" id="ipPhi">—</span></div>
+    <div class="info-row"><span class="ik">Kc</span><span class="iv" id="ipKc">—</span></div>
+    <div class="p-sep"></div>
+    <span class="phase-pill" id="ph0">Dormant</span>
+    <span class="phase-pill" id="ph1">Differentiating</span>
+    <span class="phase-pill" id="ph2">Erupting</span>
+    <div class="p-sep"></div>
+    <div class="rock-name" id="rockName">Alkali Basalt</div>
+    <div class="rock-track"><div class="rock-fill" id="rockFill" style="width:0%"></div></div>
+    <div class="rock-stages"><span>Basalt</span><span>Hawaiite</span><span>Trachyte</span></div>
+    <div class="p-sep"></div>
+    <div style="font-size:.46rem;color:var(--dim)">Next injection: <span id="ipNext" style="color:#604830">—</span></div>
+  </div>
+
+  <!-- DESKTOP RIGHT PANEL -->
+  <div class="panel panel-right">
+    <div class="p-lbl">Mode</div>
+    <div class="mode-grid">
+      <button class="mode-btn active" id="modeAll" onclick="setMode('all')">⊞ All Seqs</button>
+      <button class="mode-btn" id="modeOne" onclick="setMode('individual')">▷ Individual</button>
+    </div>
+    <div id="seqPicker" style="display:none">
+      <div class="seq-pick-grid">
+        <button class="seq-pick active" id="pick0" onclick="pickSeq(0)">Seq 1<span>142 ka</span></button>
+        <button class="seq-pick" id="pick1" onclick="pickSeq(1)">Seq 2<span>122 ka</span></button>
+        <button class="seq-pick" id="pick2" onclick="pickSeq(2)">Seq 3<span>94 ka</span></button>
+        <button class="seq-pick" id="pick3" onclick="pickSeq(3)">Seq 4<span>32 ka</span></button>
+      </div>
+    </div>
+    <div class="p-sep"></div>
+    <div class="ctrl-row" style="margin-bottom:4px">
+      <button class="ctrl-btn primary" id="btnPlay" onclick="togglePlay()">▶ PLAY</button>
+      <button class="ctrl-btn" onclick="restart()">↺ RESET</button>
+    </div>
+    <div class="spd-row">
+      <button class="spd-btn" onclick="setSpeed(1)" id="s1">1×</button>
+      <button class="spd-btn active" onclick="setSpeed(5)" id="s5">5×</button>
+      <button class="spd-btn" onclick="setSpeed(20)" id="s20">20×</button>
+      <button class="spd-btn" onclick="setSpeed(100)" id="s100">MAX</button>
+    </div>
+    <div class="p-sep"></div>
+    <div class="p-lbl">Parameters per Sequence</div>
+    <div id="accordion">
+      <div class="acc-hdr active" onclick="toggleAcc(0)"><span class="acc-dot" style="background:#e07a18"></span>Seq 1 · Gura 3<span class="acc-arrow" id="arr0">▾</span></div>
+      <div class="acc-body" id="acc0">
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="vK0_kc">57.5</span></div><input type="range" id="sl0_kc" min="5" max="200" step="0.5" value="57.5" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="vK0_tb">1180</span></div><input type="range" id="sl0_tb" min="1050" max="1280" step="5" value="1180" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="vK0_ta">600</span></div><input type="range" id="sl0_ta" min="400" max="750" step="10" value="600" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="vK0_afc">0.15</span></div><input type="range" id="sl0_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="onParam()"></div>
+      </div>
+      <div class="acc-hdr" onclick="toggleAcc(1)"><span class="acc-dot" style="background:#d09030"></span>Seq 2 · Matan<span class="acc-arrow" id="arr1">▸</span></div>
+      <div class="acc-body" id="acc1" style="display:none">
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="vK1_kc">75.0</span></div><input type="range" id="sl1_kc" min="5" max="200" step="0.5" value="75.0" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="vK1_tb">1180</span></div><input type="range" id="sl1_tb" min="1050" max="1280" step="5" value="1180" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="vK1_ta">600</span></div><input type="range" id="sl1_ta" min="400" max="750" step="10" value="600" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="vK1_afc">0.15</span></div><input type="range" id="sl1_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="onParam()"></div>
+      </div>
+      <div class="acc-hdr" onclick="toggleAcc(2)"><span class="acc-dot" style="background:#c0a050"></span>Seq 3 · Gura 2<span class="acc-arrow" id="arr2">▸</span></div>
+      <div class="acc-body" id="acc2" style="display:none">
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="vK2_kc">29.0</span></div><input type="range" id="sl2_kc" min="5" max="200" step="0.5" value="29.0" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="vK2_tb">1180</span></div><input type="range" id="sl2_tb" min="1050" max="1280" step="5" value="1180" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="vK2_ta">600</span></div><input type="range" id="sl2_ta" min="400" max="750" step="10" value="600" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="vK2_afc">0.15</span></div><input type="range" id="sl2_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="onParam()"></div>
+      </div>
+      <div class="acc-hdr" onclick="toggleAcc(3)"><span class="acc-dot" style="background:#b0b070"></span>Seq 4 · Mouteen<span class="acc-arrow" id="arr3">▸</span></div>
+      <div class="acc-body" id="acc3" style="display:none">
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="vK3_kc">24.5</span></div><input type="range" id="sl3_kc" min="5" max="200" step="0.5" value="24.5" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="vK3_tb">1180</span></div><input type="range" id="sl3_tb" min="1050" max="1280" step="5" value="1180" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="vK3_ta">600</span></div><input type="range" id="sl3_ta" min="400" max="750" step="10" value="600" oninput="onParam()"></div>
+        <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="vK3_afc">0.15</span></div><input type="range" id="sl3_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="onParam()"></div>
+      </div>
+    </div>
+    <div class="p-sep"></div>
+    <button class="ctrl-btn" onclick="resetParams()" style="font-size:.46rem">↺ Reset Defaults</button>
+  </div>
+  </div><!-- end canvas-row -->
+</div><!-- end layout -->
+
+<!-- MOBILE SECTIONS (stack below canvas) -->
+<!-- Stats strip -->
+<div class="mob-section" id="mobStats" style="display:none;padding:0">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr)">
+    <div style="padding:10px 8px;border-right:1px solid var(--brd)">
+      <div style="font-size:.4rem;letter-spacing:.16em;color:var(--dim);text-transform:uppercase">Time</div>
+      <div style="font-size:1.1rem;font-weight:600;color:var(--bright);line-height:1.1" id="mTime">0.0</div>
+      <div style="font-size:.42rem;color:var(--dim)">ka</div>
+    </div>
+    <div style="padding:10px 8px;border-right:1px solid var(--brd)">
+      <div style="font-size:.4rem;letter-spacing:.16em;color:var(--dim);text-transform:uppercase">Temp</div>
+      <div style="font-size:1.1rem;font-weight:600;color:var(--bright);line-height:1.1" id="mTemp">1180</div>
+      <div style="font-size:.42rem;color:var(--dim)">°C</div>
+    </div>
+    <div style="padding:10px 8px;border-right:1px solid var(--brd)">
+      <div style="font-size:.4rem;letter-spacing:.16em;color:var(--dim);text-transform:uppercase">SiO₂</div>
+      <div style="font-size:1.1rem;font-weight:600;color:var(--bright);line-height:1.1" id="mSio">45.5</div>
+      <div style="font-size:.42rem;color:var(--dim)">wt%</div>
+    </div>
+    <div style="padding:10px 8px">
+      <div style="font-size:.4rem;letter-spacing:.16em;color:var(--dim);text-transform:uppercase">Crystal</div>
+      <div style="font-size:1.1rem;font-weight:600;color:var(--bright);line-height:1.1" id="mPhi">0.0</div>
+      <div style="font-size:.42rem;color:var(--dim)">%</div>
+    </div>
+  </div>
+</div>
+
+<!-- Mode + Playback -->
+<div class="mob-section" id="mobControls" style="display:none">
+  <div class="p-lbl" style="margin-bottom:8px">Simulation Mode</div>
+  <div class="mode-grid" style="margin-bottom:8px">
+    <button class="mode-btn active" id="modeAllM" onclick="setMode('all')">⊞ All Sequences</button>
+    <button class="mode-btn" id="modeOneM" onclick="setMode('individual')">▷ Individual</button>
+  </div>
+  <div id="seqPickerM" style="display:none;margin-bottom:8px">
+    <div class="seq-pick-grid">
+      <button class="seq-pick active" id="pickM0" onclick="pickSeq(0)">Seq 1<span>142 ka</span></button>
+      <button class="seq-pick" id="pickM1" onclick="pickSeq(1)">Seq 2<span>122 ka</span></button>
+      <button class="seq-pick" id="pickM2" onclick="pickSeq(2)">Seq 3<span>94 ka</span></button>
+      <button class="seq-pick" id="pickM3" onclick="pickSeq(3)">Seq 4<span>32 ka</span></button>
+    </div>
+  </div>
+  <div class="p-lbl" style="margin-bottom:6px">Playback</div>
+  <div class="ctrl-row" style="margin-bottom:6px">
+    <button class="ctrl-btn primary" id="btnPlayM" onclick="togglePlay()">▶ PLAY</button>
+    <button class="ctrl-btn" onclick="restart()">↺ RESTART</button>
+  </div>
+  <div class="spd-row">
+    <button class="spd-btn" onclick="setSpeed(1)" id="ms1">1×</button>
+    <button class="spd-btn active" onclick="setSpeed(5)" id="ms5">5×</button>
+    <button class="spd-btn" onclick="setSpeed(20)" id="ms20">20×</button>
+    <button class="spd-btn" onclick="setSpeed(100)" id="ms100">MAX</button>
+  </div>
+</div>
+
+<!-- Rock / phase info -->
+<div class="mob-section" id="mobInfo" style="display:none">
+  <div class="p-lbl" style="margin-bottom:6px">Current State</div>
+  <div class="info-row"><span class="ik">Sequence</span><span class="iv" id="mSeq">—</span></div>
+  <div class="info-row"><span class="ik">Phase</span><span class="iv" id="mPhase">—</span></div>
+  <div class="info-row"><span class="ik">Rock type</span><span class="iv" id="mRock" style="color:#e07a18">Alkali Basalt</span></div>
+  <div class="info-row"><span class="ik">Kc</span><span class="iv" id="mKc">—</span></div>
+  <div class="rock-track" style="margin-top:8px"><div class="rock-fill" id="mRockFill" style="width:0%"></div></div>
+  <div class="rock-stages"><span>Basalt</span><span>Hawaiite</span><span>Trachyte</span></div>
+</div>
+
+<!-- Parameters accordion -->
+<div class="mob-section" id="mobParams" style="display:none">
+  <div class="p-lbl" style="margin-bottom:6px">Parameters per Sequence</div>
+  <div class="acc-hdr active" onclick="mToggleAcc(0)"><span class="acc-dot" style="background:#e07a18"></span>Seq 1 · Gura 3<span class="acc-arrow" id="marr0">▾</span></div>
+  <div id="macc0" style="padding:5px 2px 2px;border-bottom:1px solid #1e160a">
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="mvK0_kc">57.5</span></div><input type="range" id="msl0_kc" min="5" max="200" step="0.5" value="57.5" oninput="mOnParam(0,'kc',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="mvK0_tb">1180</span></div><input type="range" id="msl0_tb" min="1050" max="1280" step="5" value="1180" oninput="mOnParam(0,'tb',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="mvK0_ta">600</span></div><input type="range" id="msl0_ta" min="400" max="750" step="10" value="600" oninput="mOnParam(0,'ta',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="mvK0_afc">0.15</span></div><input type="range" id="msl0_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="mOnParam(0,'afc',this.value)"></div>
+  </div>
+  <div class="acc-hdr" onclick="mToggleAcc(1)"><span class="acc-dot" style="background:#d09030"></span>Seq 2 · Matan<span class="acc-arrow" id="marr1">▸</span></div>
+  <div id="macc1" style="display:none;padding:5px 2px 2px;border-bottom:1px solid #1e160a">
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="mvK1_kc">75.0</span></div><input type="range" id="msl1_kc" min="5" max="200" step="0.5" value="75.0" oninput="mOnParam(1,'kc',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="mvK1_tb">1180</span></div><input type="range" id="msl1_tb" min="1050" max="1280" step="5" value="1180" oninput="mOnParam(1,'tb',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="mvK1_ta">600</span></div><input type="range" id="msl1_ta" min="400" max="750" step="10" value="600" oninput="mOnParam(1,'ta',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="mvK1_afc">0.15</span></div><input type="range" id="msl1_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="mOnParam(1,'afc',this.value)"></div>
+  </div>
+  <div class="acc-hdr" onclick="mToggleAcc(2)"><span class="acc-dot" style="background:#c0a050"></span>Seq 3 · Gura 2<span class="acc-arrow" id="marr2">▸</span></div>
+  <div id="macc2" style="display:none;padding:5px 2px 2px;border-bottom:1px solid #1e160a">
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="mvK2_kc">29.0</span></div><input type="range" id="msl2_kc" min="5" max="200" step="0.5" value="29.0" oninput="mOnParam(2,'kc',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="mvK2_tb">1180</span></div><input type="range" id="msl2_tb" min="1050" max="1280" step="5" value="1180" oninput="mOnParam(2,'tb',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="mvK2_ta">600</span></div><input type="range" id="msl2_ta" min="400" max="750" step="10" value="600" oninput="mOnParam(2,'ta',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="mvK2_afc">0.15</span></div><input type="range" id="msl2_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="mOnParam(2,'afc',this.value)"></div>
+  </div>
+  <div class="acc-hdr" onclick="mToggleAcc(3)"><span class="acc-dot" style="background:#b0b070"></span>Seq 4 · Mouteen<span class="acc-arrow" id="marr3">▸</span></div>
+  <div id="macc3" style="display:none;padding:5px 2px 2px">
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">Kc</span><span class="sl-val" id="mvK3_kc">24.5</span></div><input type="range" id="msl3_kc" min="5" max="200" step="0.5" value="24.5" oninput="mOnParam(3,'kc',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T basalt°C</span><span class="sl-val" id="mvK3_tb">1180</span></div><input type="range" id="msl3_tb" min="1050" max="1280" step="5" value="1180" oninput="mOnParam(3,'tb',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">T ambient°C</span><span class="sl-val" id="mvK3_ta">600</span></div><input type="range" id="msl3_ta" min="400" max="750" step="10" value="600" oninput="mOnParam(3,'ta',this.value)"></div>
+    <div class="sl-block"><div class="sl-hdr"><span class="sl-name">AFC ratio</span><span class="sl-val" id="mvK3_afc">0.15</span></div><input type="range" id="msl3_afc" min="0" max="0.5" step="0.01" value="0.15" oninput="mOnParam(3,'afc',this.value)"></div>
+  </div>
+  <div style="margin-top:8px">
+    <button class="ctrl-btn" onclick="resetParams()" style="font-size:.46rem">↺ Reset All Defaults</button>
+  </div>
+</div>
+
+<div id="eruptFlash"></div>
+
+<script>
+const L_over_Cp=4e5/1480;
+const MINERALS=[
+  {name:'olivine',        C:39.0,T_onset:1200,T_width:30,max_f:0.10,col:'#4a7c4e'},
+  {name:'clinopyroxene',  C:51.0,T_onset:1150,T_width:25,max_f:0.22,col:'#2d6020'},
+  {name:'plagioclase',    C:52.0,T_onset:1100,T_width:25,max_f:0.38,col:'#b8b0a0'},
+  {name:'magnetite',      C:0.2, T_onset:1020,T_width:30,max_f:0.07,col:'#383030'},
+  {name:'alkali_feldspar',C:65.0,T_onset:900, T_width:20,max_f:0.18,col:'#d8c888'},
+  {name:'residual',       C:50.0,T_onset:700, T_width:30,max_f:0.26,col:'#907850'},
+];
+const SEQS=[
+  {id:1,Kc:57.5,label:'Seq 1',name:'Gura 3',  obs:11.6,err:6.1, age:'~142 ka',color:'#e07a18'},
+  {id:2,Kc:75.0,label:'Seq 2',name:'Matan',   obs:8.8, err:5.4, age:'~122 ka',color:'#d09030'},
+  {id:3,Kc:29.0,label:'Seq 3',name:'Gura 2',  obs:22.9,err:1.7, age:'~94 ka', color:'#c0a050'},
+  {id:4,Kc:24.5,label:'Seq 4',name:'Mouteen', obs:27.2,err:14.5,age:'~32 ka', color:'#b0b070'},
+];
+const GAPS=[12,0.5,35];
+const ERUPT_HOLD_KA=2;
+const DEFS=[{kc:57.5,tb:1180,ta:600,afc:.15},{kc:75.0,tb:1180,ta:600,afc:.15},{kc:29.0,tb:1180,ta:600,afc:.15},{kc:24.5,tb:1180,ta:600,afc:.15}];
+
+function sig(T,T0,Tw){return 1/(1+Math.exp(-Math.max(-20,Math.min(20,(T0-T)/Tw))));}
+function rsp(i){return{kc:+$(`sl${i}_kc`).value,tb:+$(`sl${i}_tb`).value,ta:+$(`sl${i}_ta`).value,afc:+$(`sl${i}_afc`).value};}
+function $(id){return document.getElementById(id);}
+
+function runSeq(Kc,Tb,Ta,AFC){
+  Tb=Tb||1180;Ta=Ta||600;AFC=AFC||.15;
+  const dt=50,tMax=60000;let T=Tb,C=45.5;
+  const phi=Object.fromEntries(MINERALS.map(m=>[m.name,0]));
+  const Ka=AFC*0.5,hist=[];let te=null;
+  for(let s=0;s<tMax/dt;s++){
+    const t=(s+1)*dt,pt=Object.values(phi).reduce((a,b)=>a+b,0),mf=Math.max(1-pt,.02);
+    const dphi={};let td=0;
+    for(const m of MINERALS){const r=Math.max(m.max_f-phi[m.name],0),di=Math.min(.003*Kc/1000*sig(T,m.T_onset,m.T_width)*r*dt,r);dphi[m.name]=di;td+=di;}
+    if(pt+td>.98&&td>0){const sc=Math.max(0,(.98-pt)/td);for(const m of MINERALS)dphi[m.name]*=sc;td*=sc;}
+    T=Math.max(T-Kc*(T-Ta)/1000*(dt/1000)+L_over_Cp*td,Ta);
+    for(const m of MINERALS)phi[m.name]+=dphi[m.name];
+    let dC=0;for(const m of MINERALS)if(dphi[m.name]>0)dC+=dphi[m.name]*(C-m.C)/mf;
+    C=Math.min(Math.max(C+dC+Ka*(65-C)/1000*dt,45.5),75);
+    const ptn=Object.values(phi).reduce((a,b)=>a+b,0);
+    hist.push({t_ka:t/1000,T,C,phi_total:ptn,phi:{...phi}});
+    if(!te&&C>=62.6)te=t/1000;if(C>=62.6||ptn>=.97)break;
+  }
+  return{hist,t_erupt:te||hist[hist.length-1].t_ka};
+}
+
+const seqData=SEQS.map((s,i)=>{const d=DEFS[i];return{...s,...runSeq(d.kc,d.tb,d.ta,d.afc)};});
+let totalKa=0;seqData.forEach((s,i)=>{totalKa+=s.t_erupt+ERUPT_HOLD_KA+(i<GAPS.length?GAPS[i]:0);});
+
+// params
+function onParam(){
+  for(let i=0;i<4;i++){const p=rsp(i);$(`vK${i}_kc`).textContent=p.kc.toFixed(1);$(`vK${i}_tb`).textContent=p.tb;$(`vK${i}_ta`).textContent=p.ta;$(`vK${i}_afc`).textContent=p.afc.toFixed(2);}
+  const wp=playing;if(playing)playing=false;recompute();if(wp)playing=true;
+}
+function mOnParam(i,k,v){
+  const idMap={kc:`sl${i}_kc`,tb:`sl${i}_tb`,ta:`sl${i}_ta`,afc:`sl${i}_afc`};
+  const vMap={kc:`vK${i}_kc`,tb:`vK${i}_tb`,ta:`vK${i}_ta`,afc:`vK${i}_afc`};
+  const mVMap={kc:`mvK${i}_kc`,tb:`mvK${i}_tb`,ta:`mvK${i}_ta`,afc:`mvK${i}_afc`};
+  $(idMap[k]).value=v;
+  const fmt=k==='kc'?parseFloat(v).toFixed(1):k==='afc'?parseFloat(v).toFixed(2):v;
+  $(vMap[k]).textContent=fmt;$(mVMap[k]).textContent=fmt;
+  const wp=playing;if(playing)playing=false;recompute();if(wp)playing=true;
+}
+function toggleAcc(i){const b=$('acc'+i),a=$('arr'+i),h=b.previousElementSibling,op=b.style.display!=='none';b.style.display=op?'none':'block';a.textContent=op?'▸':'▾';h.classList.toggle('active',!op);}
+function mToggleAcc(i){const b=$('macc'+i),a=$('marr'+i),h=b.previousElementSibling,op=b.style.display!=='none';b.style.display=op?'none':'block';a.textContent=op?'▸':'▾';h.classList.toggle('active',!op);}
+function recompute(){
+  seqData.length=0;SEQS.forEach((s,i)=>{const p=rsp(i);s.Kc=p.kc;seqData.push({...s,...runSeq(p.kc,p.tb,p.ta,p.afc)});});
+  totalKa=0;seqData.forEach((s,i)=>{totalKa+=s.t_erupt+ERUPT_HOLD_KA+(i<GAPS.length?GAPS[i]:0);});
+  masterT=0;smokeParticles=[];buildTimeline();
+}
+function resetParams(){DEFS.forEach((d,i)=>{['kc','tb','ta','afc'].forEach(k=>{$(`sl${i}_${k}`).value=d[k];const m=$(`msl${i}_${k}`);if(m)m.value=d[k];});});onParam();}
+
+// state
+let playing=false,speed=5,raf=null,masterT=0;
+let smokeParticles=[],prevPhase='',prevSeqIdx=-1;
+let simMode='all',selSeq=0;
+
+function curTotal(){return simMode==='individual'?seqData[selSeq].t_erupt+ERUPT_HOLD_KA:totalKa;}
+function getState(t){
+  if(simMode==='individual'){const seq=seqData[selSeq];
+    if(t<seq.t_erupt){const idx=Math.min(Math.floor(t/.05),seq.hist.length-1);return{phase:'differentiating',seqIdx:selSeq,frame:seq.hist[idx],seq,localT:t};}
+    if(t<seq.t_erupt+ERUPT_HOLD_KA)return{phase:'erupting',seqIdx:selSeq,frame:seq.hist[seq.hist.length-1],seq,localT:t};
+    return{phase:'done',seqIdx:selSeq,frame:seq.hist[seq.hist.length-1],seq};}
+  let cur=0;
+  for(let i=0;i<seqData.length;i++){const seq=seqData[i];
+    if(t<cur+seq.t_erupt){const lT=t-cur,idx=Math.min(Math.floor(lT/.05),seq.hist.length-1);return{phase:'differentiating',seqIdx:i,frame:seq.hist[idx],seq,cursor:cur,localT:lT};}
+    cur+=seq.t_erupt;
+    if(t<cur+ERUPT_HOLD_KA)return{phase:'erupting',seqIdx:i,frame:seq.hist[seq.hist.length-1],seq,cursor:cur,localT:t-cur};
+    cur+=ERUPT_HOLD_KA;
+    const gap=i<GAPS.length?GAPS[i]:0;
+    if(t<cur+gap)return{phase:'dormant',seqIdx:i,frame:null,seq,cursor:cur,localT:t-cur,gapLen:gap};
+    cur+=gap;}
+  return{phase:'done',seqIdx:3,frame:seqData[3].hist[seqData[3].hist.length-1],seq:seqData[3]};}
+
+// canvas
+const canvas=$('scene'),ctx=canvas.getContext('2d');
+let W,H;
+function resizeCanvas(){
+  const row=canvas.parentElement.parentElement; // canvas-row
+  W=canvas.width=row.clientWidth||window.innerWidth;
+  H=canvas.height=row.clientHeight||Math.max(Math.round(row.clientWidth*0.6),300);
+}
+
+function geo(){const gY=H*.42,vX=W*.5,vA=H*.07,vBW=W*.28,cX=W*.5,cY=gY+H*.27,cRX=W*.10,cRY=H*.12,cdW=W*.025,cdT=gY,cdB=cY-cRY*.7;return{gY,vX,vA,vBW,cX,cY,cRX,cRY,cdW,cdT,cdB};}
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function mRGB(C,T,Tb,Ta){Tb=Tb||1180;Ta=Ta||600;const t=clamp((C-45.5)/17.1,0,1),h=clamp((T-Ta)/(Tb-Ta),0,1);return{r:Math.round(lerp(180,240,t)),g:Math.round(lerp(60,200,t)+h*30),b:Math.round(lerp(10,140,t))};}
+
+function drawScene(state){
+  const g=geo();
+  ctx.fillStyle='#07070a';ctx.fillRect(0,0,W,H);
+  // sky
+  const sg=ctx.createLinearGradient(0,0,0,g.gY);sg.addColorStop(0,'#0e0c0a');sg.addColorStop(1,'#1e1810');ctx.fillStyle=sg;ctx.fillRect(0,0,W,g.gY);
+  // stars
+  ctx.fillStyle='rgba(200,180,140,.35)';
+  for(let i=0;i<60;i++){ctx.beginPath();ctx.arc(((42*i*7919)%1000)/1000*W,((42*i*6271)%1000)/1000*g.gY*.85,.5+((i*3)%3)*.3,0,Math.PI*2);ctx.fill();}
+  // mantle
+  const mY=g.gY+H*.52,mg=ctx.createLinearGradient(0,mY,0,H);mg.addColorStop(0,'#3d1a08');mg.addColorStop(.5,'#5a2010');mg.addColorStop(1,'#7a3018');ctx.fillStyle=mg;ctx.fillRect(0,mY,W,H-mY);
+  const mgl=ctx.createRadialGradient(W/2,H,0,W/2,H,H*.5);mgl.addColorStop(0,'rgba(200,80,20,.22)');mgl.addColorStop(1,'transparent');ctx.fillStyle=mgl;ctx.fillRect(0,0,W,H);
+  // crust
+  const cg=ctx.createLinearGradient(0,g.gY,0,mY);cg.addColorStop(0,'#5a4530');cg.addColorStop(.5,'#3d2e20');cg.addColorStop(1,'#2d2018');ctx.fillStyle=cg;ctx.fillRect(0,g.gY,W,mY-g.gY);
+  for(let i=0;i<7;i++){const y=g.gY+(mY-g.gY)*(i+1)/8;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.strokeStyle=`rgba(100,75,50,${.12+i*.02})`;ctx.lineWidth=1;ctx.stroke();for(let j=0;j<8;j++){const rx=(j*137+i*41)%W,ry=y+((j*71)%10)-5;ctx.beginPath();ctx.ellipse(rx,ry,15+j*3,4,0,0,Math.PI*2);ctx.fillStyle=`rgba(80,60,40,${.06+i*.01})`;ctx.fill();}}
+  // labels
+  ctx.font='600 13px IBM Plex Mono';ctx.fillStyle='rgba(200,175,140,.5)';ctx.textAlign='left';ctx.fillText('Crust',W*.12,g.gY+35);ctx.fillText('Mantle',W*.12,mY+30);
+  const aX=W*.17,aT=g.gY+10,aB=mY-10;ctx.strokeStyle='rgba(200,175,140,.3)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(aX,aT);ctx.lineTo(aX,aB);ctx.stroke();ctx.beginPath();ctx.moveTo(aX-5,aT+8);ctx.lineTo(aX,aT);ctx.lineTo(aX+5,aT+8);ctx.stroke();ctx.moveTo(aX-5,aB-8);ctx.lineTo(aX,aB);ctx.lineTo(aX+5,aB-8);ctx.stroke();ctx.font='400 11px IBM Plex Mono';ctx.fillStyle='rgba(200,175,140,.35)';ctx.textAlign='center';ctx.fillText('~20 km',aX,(aT+aB)/2+4);
+  drawConduit(g,state);drawChamber(g,state);drawVolcano(g,state);
+  if(state.phase==='erupting')drawEruption(g,state);
+  drawSmoke(g,state);
+  ctx.fillStyle='#4a3828';ctx.fillRect(0,g.gY,W,3);
+  const gg=ctx.createLinearGradient(0,g.gY,0,g.gY+8);gg.addColorStop(0,'#3a4a20');gg.addColorStop(1,'transparent');ctx.fillStyle=gg;ctx.fillRect(0,g.gY,W,8);
+}
+
+function drawConduit(g,state){
+  const{cX,cY,cRY,cdW,cdT,cdB}=g;
+  let rgb={r:200,g:80,b:20};
+  if(state.frame){const p=rsp(state.seqIdx);rgb=mRGB(state.frame.C,state.frame.T,p.tb,p.ta);}
+  if(state.phase==='dormant')rgb={r:60,g:40,b:25};
+  const a=state.phase==='dormant'?.3:.85;
+  ctx.beginPath();ctx.moveTo(cX-cdW/2,cdT);ctx.bezierCurveTo(cX-cdW/2,cdT+50,cX-cdW*.4,cdB-30,cX-cdW*.4,cdB);ctx.lineTo(cX+cdW*.4,cdB);ctx.bezierCurveTo(cX+cdW*.4,cdB-30,cX+cdW/2,cdT+50,cX+cdW/2,cdT);ctx.closePath();
+  const cg=ctx.createLinearGradient(0,cdT,0,cdB);cg.addColorStop(0,`rgba(${rgb.r},${rgb.g},${rgb.b},${a*.4})`);cg.addColorStop(.5,`rgba(${rgb.r},${rgb.g},${rgb.b},${a})`);cg.addColorStop(1,`rgba(${rgb.r},${rgb.g},${rgb.b},${a*.7})`);ctx.fillStyle=cg;ctx.fill();
+  ctx.strokeStyle=`rgba(${rgb.r-30},${rgb.g-20},${rgb.b},.3)`;ctx.lineWidth=1.5;ctx.stroke();
+  if(state.phase!=='dormant'){ctx.save();ctx.beginPath();ctx.moveTo(cX-cdW/2,cdT);ctx.lineTo(cX-cdW*.4,cdB);ctx.lineTo(cX+cdW*.4,cdB);ctx.lineTo(cX+cdW/2,cdT);ctx.closePath();ctx.clip();const now=Date.now()/1000;for(let i=0;i<5;i++){const f=((now*.3+i*.2)%1),by=cdT+(cdB-cdT)*(1-f),bx=cX+Math.sin(i*2.1+now)*cdW*.2;ctx.beginPath();ctx.arc(bx,by,2+i%3,0,Math.PI*2);ctx.fillStyle=`rgba(255,180,80,${.4*(1-f)})`;ctx.fill();}ctx.restore();}
+}
+
+function drawChamber(g,state){
+  const{cX,cY,cRX,cRY}=g;
+  let rgb={r:80,g:50,b:30},pt=0,phi={},glow=.1;
+  if(state.frame){const p=rsp(state.seqIdx);rgb=mRGB(state.frame.C,state.frame.T,p.tb,p.ta);pt=state.frame.phi_total||0;phi=state.frame.phi||{};glow=.3+pt*.3;}
+  if(state.phase==='dormant'){rgb={r:50,g:35,b:20};glow=.05;}
+  if(state.phase==='erupting')glow=.6;
+  const og=ctx.createRadialGradient(cX,cY,0,cX,cY,cRX*2.2);og.addColorStop(0,`rgba(${rgb.r},${rgb.g},${rgb.b},${glow*.4})`);og.addColorStop(1,'transparent');ctx.fillStyle=og;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.beginPath();ctx.ellipse(cX,cY,cRX,cRY,0,0,Math.PI*2);ctx.clip();
+  const mg=ctx.createRadialGradient(cX,cY-cRY*.1,0,cX,cY,cRY);mg.addColorStop(0,`rgba(${Math.min(rgb.r+60,255)},${Math.min(rgb.g+40,255)},${rgb.b+10},1)`);mg.addColorStop(.6,`rgb(${rgb.r},${rgb.g},${rgb.b})`);mg.addColorStop(1,`rgba(${rgb.r-20},${rgb.g-10},${rgb.b},1)`);ctx.fillStyle=mg;ctx.fillRect(cX-cRX,cY-cRY,cRX*2,cRY*2);
+  const sh=ctx.createRadialGradient(cX,cY-cRY*.3,0,cX,cY,cRY*.8);sh.addColorStop(0,`rgba(255,255,255,${state.phase==='erupting'?.25:.08})`);sh.addColorStop(1,'transparent');ctx.fillStyle=sh;ctx.fillRect(cX-cRX,cY-cRY,cRX*2,cRY*2);
+  if(pt>.01){const cH=pt*cRY*1.6,cTop=cY+cRY-cH;const cg=ctx.createLinearGradient(0,cTop,0,cY+cRY);cg.addColorStop(0,'rgba(40,30,20,.6)');cg.addColorStop(1,'rgba(20,15,10,.9)');ctx.fillStyle=cg;ctx.fillRect(cX-cRX,cTop,cRX*2,cH);
+    let seed=7;function rand(){seed=(seed*1664525+1013904223)&0xffffffff;return(seed>>>0)/0xffffffff;}
+    MINERALS.forEach(m=>{const f=phi[m.name]||0;if(f<.005)return;for(let i=0;i<Math.floor(f*80);i++){const px=cX-cRX*.85+rand()*cRX*1.7,py=cTop+rand()*cH,sz=1.5+rand()*2.5;ctx.beginPath();if(m.name==='plagioclase'||m.name==='alkali_feldspar'){ctx.save();ctx.translate(px,py);ctx.rotate(rand()*Math.PI);ctx.fillStyle=m.col+'cc';ctx.fillRect(-sz*1.5,-sz*.5,sz*3,sz);ctx.restore();}else{ctx.arc(px,py,sz,0,Math.PI*2);ctx.fillStyle=m.col+'aa';ctx.fill();}}});}
+  ctx.restore();
+  ctx.beginPath();ctx.ellipse(cX,cY,cRX,cRY,0,0,Math.PI*2);const og2=ctx.createLinearGradient(cX-cRX,0,cX+cRX,0);og2.addColorStop(0,`rgba(${rgb.r},${rgb.g},${rgb.b},.2)`);og2.addColorStop(.5,`rgba(${rgb.r},${rgb.g},${rgb.b},.7)`);og2.addColorStop(1,`rgba(${rgb.r},${rgb.g},${rgb.b},.2)`);ctx.strokeStyle=og2;ctx.lineWidth=2;ctx.stroke();
+  ctx.textAlign='center';
+  if(state.phase==='dormant'){ctx.font='500 11px IBM Plex Mono';ctx.fillStyle='rgba(150,100,60,.5)';ctx.fillText('Magma Chamber',cX,cY-8);ctx.font='400 10px IBM Plex Mono';ctx.fillStyle='rgba(120,80,40,.4)';ctx.fillText('dormant',cX,cY+10);}
+  else if(state.frame){ctx.font='600 13px IBM Plex Mono';ctx.fillStyle=`rgba(${rgb.r+60},${rgb.g+40},${rgb.b+20},.9)`;ctx.fillText(`${Math.round(state.frame.T)}°C`,cX,cY-cRY*.5);ctx.font='400 10px IBM Plex Mono';ctx.fillStyle='rgba(220,190,140,.6)';ctx.fillText(`SiO₂ ${state.frame.C.toFixed(1)}%`,cX,cY-cRY*.15);}
+}
+
+function drawVolcano(g,state){
+  const{vX,vA,vBW,gY}=g;
+  ctx.beginPath();ctx.moveTo(vX-vBW,gY);ctx.bezierCurveTo(vX-vBW*.5,gY-H*.05,vX-vBW*.15,vA+H*.04,vX,vA);ctx.bezierCurveTo(vX+vBW*.15,vA+H*.04,vX+vBW*.5,gY-H*.05,vX+vBW,gY);ctx.closePath();
+  const vg=ctx.createLinearGradient(vX-vBW,vA,vX+vBW,gY);vg.addColorStop(0,'#383028');vg.addColorStop(.2,'#5a4e3c');vg.addColorStop(.5,'#6e5e48');vg.addColorStop(.8,'#5a4e3c');vg.addColorStop(1,'#383028');ctx.fillStyle=vg;ctx.fill();
+  ctx.strokeStyle='rgba(100,85,65,.5)';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.save();ctx.beginPath();ctx.moveTo(vX-vBW,gY);ctx.bezierCurveTo(vX-vBW*.5,gY-H*.05,vX-vBW*.15,vA+H*.04,vX,vA);ctx.bezierCurveTo(vX+vBW*.15,vA+H*.04,vX+vBW*.5,gY-H*.05,vX+vBW,gY);ctx.closePath();ctx.clip();
+  const lg=ctx.createLinearGradient(vX-vBW,0,vX+vBW,0);lg.addColorStop(0,'transparent');lg.addColorStop(.6,'transparent');lg.addColorStop(.8,'rgba(180,150,100,.12)');lg.addColorStop(1,'rgba(180,150,100,.06)');ctx.fillStyle=lg;ctx.fillRect(vX-vBW,vA,vBW*2,gY-vA);ctx.restore();
+  ctx.beginPath();ctx.moveTo(vX-vBW*.12,vA+H*.06);ctx.lineTo(vX,vA);ctx.lineTo(vX+vBW*.12,vA+H*.06);ctx.closePath();ctx.fillStyle='rgba(110,95,75,.45)';ctx.fill();
+  ctx.beginPath();ctx.moveTo(vX-vBW*.7,gY);ctx.bezierCurveTo(vX-vBW*.4,gY-H*.02,vX-vBW*.25,gY-H*.04,vX-vBW*.15,gY-H*.06);ctx.lineTo(vX+vBW*.15,gY-H*.06);ctx.bezierCurveTo(vX+vBW*.25,gY-H*.04,vX+vBW*.4,gY-H*.02,vX+vBW*.7,gY);ctx.closePath();ctx.fillStyle='rgba(40,58,22,.4)';ctx.fill();
+  ctx.beginPath();ctx.ellipse(vX,vA+8,vBW*.045,6,0,0,Math.PI*2);ctx.fillStyle='#120e0a';ctx.fill();ctx.strokeStyle='#5a4030';ctx.lineWidth=1.5;ctx.stroke();
+  if(state.phase!=='dormant'){const cg=ctx.createRadialGradient(vX,vA+8,0,vX,vA+8,vBW*.12);cg.addColorStop(0,`rgba(255,140,20,${state.phase==='erupting'?.8:.3})`);cg.addColorStop(1,'transparent');ctx.fillStyle=cg;ctx.fillRect(vX-vBW*.15,vA-5,vBW*.3,25);}
+}
+
+function drawEruption(g,state){
+  const{vX,vA,vBW,gY}=g;
+  const now=Date.now()/1000;
+  const craterW=vBW*.045;
+
+  // Vertical lava fountain — tight column going straight up
+  const fountainH=H*.18;
+  for(let i=0;i<14;i++){
+    const frac=((now*.9+i*.071)%1);
+    // Particles arc up then fall back, all within a narrow column
+    const rise=Math.sin(frac*Math.PI);
+    const y=vA+8-rise*fountainH;
+    const x=vX+(Math.sin(i*2.3+now*1.5)*craterW*0.8)*(1-rise*0.3);
+    const r=(3.5-frac*2)*rise+.5;
+    const heat=Math.round(frac*60);
+    ctx.beginPath();ctx.arc(x,y,Math.max(r,.3),0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,${80+heat},0,${rise*.95})`;ctx.fill();
+  }
+
+  // Glowing column core
+  const colGrad=ctx.createLinearGradient(vX,vA+8,vX,vA-fountainH*.7);
+  colGrad.addColorStop(0,'rgba(255,120,0,0.7)');
+  colGrad.addColorStop(0.5,'rgba(255,80,0,0.4)');
+  colGrad.addColorStop(1,'rgba(255,50,0,0.0)');
+  ctx.fillStyle=colGrad;
+  ctx.beginPath();
+  ctx.moveTo(vX-craterW*.5,vA+10);
+  ctx.lineTo(vX-craterW*.2,vA-fountainH*.7);
+  ctx.lineTo(vX+craterW*.2,vA-fountainH*.7);
+  ctx.lineTo(vX+craterW*.5,vA+10);
+  ctx.closePath();ctx.fill();
+
+  // Crater glow
+  const cg=ctx.createRadialGradient(vX,vA+5,0,vX,vA+5,vBW*.12);
+  cg.addColorStop(0,'rgba(255,160,20,.9)');
+  cg.addColorStop(.5,'rgba(255,80,0,.5)');
+  cg.addColorStop(1,'transparent');
+  ctx.fillStyle=cg;
+  ctx.fillRect(vX-vBW*.15,vA-10,vBW*.3,30);
+}
+
+function drawSmoke(g,state){
+  const{vX,vA}=g;if(state.phase==='dormant')return;
+  for(let i=0;i<smokeParticles.length;i++){const p=smokeParticles[i];p.y-=p.vy;p.x+=p.vx;p.r+=.3;p.life-=.008;if(p.life<=0){smokeParticles.splice(i,1);i--;continue;}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);const a=state.phase==='erupting'?p.life*.5:p.life*.2,gr=state.phase==='erupting'?60:120;ctx.fillStyle=`rgba(${gr},${gr-10},${gr-20},${a})`;ctx.fill();}
+  if(Math.random()<(state.phase==='erupting'?.4:.1))smokeParticles.push({x:vX+(Math.random()-.5)*12,y:vA-5,vx:(Math.random()-.5)*.5,vy:.8+Math.random()*.8,r:3+Math.random()*5,life:1});
+}
+
+// timeline
+function buildTimeline(){
+  const tr=$('tlTrack');tr.querySelectorAll('.tl-seg,.tl-gap').forEach(e=>e.remove());
+  if(simMode==='individual'){const seq=seqData[selSeq];const b=document.createElement('div');b.className='tl-seg';b.style.cssText='left:0%;width:100%';const inner=document.createElement('div');inner.className='tl-seg-bar';inner.style.cssText=`background:${seq.color};inset:3px 1px`;b.appendChild(inner);const lbl=document.createElement('div');lbl.className='tl-seg-lbl';lbl.textContent=`${seq.label}·${seq.name}·${seq.age}`;b.appendChild(lbl);const age=document.createElement('div');age.className='tl-seg-age';age.textContent=`${seq.t_erupt.toFixed(1)} ka`;b.appendChild(age);tr.appendChild(b);return;}
+  let cur=0;seqData.forEach((seq,i)=>{const dur=seq.t_erupt+ERUPT_HOLD_KA;const b=document.createElement('div');b.className='tl-seg';b.style.cssText=`left:${cur/totalKa*100}%;width:${dur/totalKa*100}%`;const inn=document.createElement('div');inn.className='tl-seg-bar';inn.style.cssText=`background:${seq.color};inset:3px 1px`;b.appendChild(inn);const lbl=document.createElement('div');lbl.className='tl-seg-lbl';lbl.textContent=seq.label;b.appendChild(lbl);const age=document.createElement('div');age.className='tl-seg-age';age.textContent=`${seq.t_erupt.toFixed(1)} ka`;b.appendChild(age);tr.appendChild(b);cur+=dur;if(i<GAPS.length&&GAPS[i]>.2){const gap=document.createElement('div');gap.className='tl-gap';gap.style.cssText=`left:${cur/totalKa*100}%;width:${GAPS[i]/totalKa*100}%`;gap.textContent=`${GAPS[i]} ka gap`;tr.appendChild(gap);cur+=GAPS[i];}else if(i<GAPS.length)cur+=GAPS[i];});
+}
+
+// ui update
+function updateUI(state){
+  const seq=state.seq;
+  $('ipSeq').textContent=`${seq.label} — ${seq.name}`;$('ipKc').textContent=seq.Kc;
+  if(state.frame){const f=state.frame;$('ipTime').textContent=`${f.t_ka.toFixed(1)}ka`;$('ipTemp').textContent=`${Math.round(f.T)}°C`;$('ipSio').textContent=`${f.C.toFixed(1)}%`;$('ipPhi').textContent=`${(f.phi_total*100).toFixed(1)}%`;const pr=Math.min((f.C-45.5)/17.1*100,100);$('rockFill').style.width=pr+'%';$('mRockFill').style.width=pr+'%';
+    let rock='Alkali Basalt',rc='#e07a18';if(f.C>=62.6){rock='Trachyte';rc='#e8e0cc';}else if(f.C>=57.5){rock='Benmoreite';rc='#a0a870';}else if(f.C>=52.5){rock='Mugearite';rc='#b0a860';}else if(f.C>=47.8){rock='Hawaiite';rc='#d09030';}
+    $('rockName').textContent=rock;$('rockName').style.color=rc;
+    $('mTime').textContent=f.t_ka.toFixed(1);$('mTemp').textContent=Math.round(f.T);$('mSio').textContent=f.C.toFixed(1);$('mPhi').textContent=(f.phi_total*100).toFixed(1);$('mSeq').textContent=`${seq.label} — ${seq.name}`;$('mPhase').textContent=state.phase;$('mRock').textContent=rock;$('mRock').style.color=rc;$('mKc').textContent=seq.Kc;}
+  ['ph0','ph1','ph2'].forEach(id=>$(id).classList.remove('active'));
+  if(state.phase==='dormant')$('ph0').classList.add('active');
+  if(state.phase==='differentiating')$('ph1').classList.add('active');
+  if(state.phase==='erupting')$('ph2').classList.add('active');
+  if(state.phase==='dormant'){const rem=(state.gapLen||0)-state.localT;$('ipNext').textContent=`${Math.max(0,rem).toFixed(1)} ka`;}else $('ipNext').textContent='—';
+  const pct=Math.min(masterT/curTotal()*100,100);$('tlFill').style.width=pct+'%';$('tlCursor').style.left=pct+'%';
+}
+
+// animation
+function frame(){if(!playing)return;const dtKa=speed*.05*(1/60);masterT=Math.min(masterT+dtKa,curTotal());const state=getState(masterT);drawScene(state);updateUI(state);if(state.phase!==prevPhase||state.seqIdx!==prevSeqIdx){if(state.phase==='erupting'&&prevPhase!=='erupting'){const el=$('eruptFlash');el.style.opacity='1';setTimeout(()=>el.style.opacity='0',600);}prevPhase=state.phase;prevSeqIdx=state.seqIdx;}if(masterT>=curTotal()){playing=false;$('btnPlay').textContent='▶ PLAY';$('btnPlayM').textContent='▶ PLAY';$('statusDot').className='status-dot done';$('statusTxt').textContent='Done';}raf=requestAnimationFrame(frame);}
+
+// controls
+function togglePlay(){playing=!playing;const t=playing?'⏸ PAUSE':'▶ PLAY';$('btnPlay').textContent=t;$('btnPlayM').textContent=t;$('statusDot').className='status-dot'+(playing?' running':'');$('statusTxt').textContent=playing?'Simulating…':'Paused';if(playing)raf=requestAnimationFrame(frame);else if(raf)cancelAnimationFrame(raf);}
+function restart(){if(raf)cancelAnimationFrame(raf);playing=false;masterT=0;smokeParticles=[];prevPhase='';prevSeqIdx=-1;$('btnPlay').textContent='▶ PLAY';$('btnPlayM').textContent='▶ PLAY';$('statusDot').className='status-dot';$('statusTxt').textContent='Ready';buildTimeline();drawScene(getState(0));updateUI(getState(0));}
+function setSpeed(s){speed=s;['1','5','20','100'].forEach(v=>{const a=parseInt(v)===s;$('s'+v).classList.toggle('active',a);const m=$('ms'+v);if(m)m.classList.toggle('active',a);});}
+function setMode(m){simMode=m;['All','One'].forEach(k=>{const active=k==='All'?m==='all':m==='individual';$('mode'+k).classList.toggle('active',active);$('mode'+k+'M').classList.toggle('active',active);});const show=m==='individual';$('seqPicker').style.display=show?'block':'none';$('seqPickerM').style.display=show?'block':'none';restart();}
+function pickSeq(i){selSeq=i;for(let j=0;j<4;j++){const a=j===i;$('pick'+j).classList.toggle('active',a);$('pickM'+j).classList.toggle('active',a);}restart();}
+
+// boot
+window.addEventListener('load',()=>{
+  resizeCanvas();buildTimeline();
+  // show mobile sections on small screens
+  if(window.innerWidth<=700){['mobStats','mobControls','mobInfo','mobParams'].forEach(id=>{$(id).style.display='block';});$('mobStats').style.display='block';}
+  const s0=getState(0);drawScene(s0);updateUI(s0);
+  (function idle(){drawScene(getState(masterT));requestAnimationFrame(idle);})();
+});
+window.addEventListener('resize',()=>{resizeCanvas();buildTimeline();if(window.innerWidth<=700){['mobStats','mobControls','mobInfo','mobParams'].forEach(id=>{$(id).style.display='block';});}});
+</script>
+</body>
+</html>
